@@ -1,0 +1,19 @@
+{
+  "name": "stand-reminder",
+  "version": "1.0.0",
+  "description": "PWA久坐提醒应用 - 随机间隔提醒你站立活动",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "pwa",
+    "reminder",
+    "health"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
