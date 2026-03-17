@@ -1,10 +1,11 @@
 {
   "name": "stand-reminder",
   "version": "1.0.0",
-  "description": "PWA久坐提醒应用 - 随机间隔提醒你站立活动",
+  "description": "PWA stand reminder app with random work and break intervals",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:public": "cross-env HOST=0.0.0.0 PORT=3001 node server.js"
   },
   "keywords": [
     "pwa",
@@ -15,5 +16,8 @@
   "license": "MIT",
   "dependencies": {
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
   }
 }
