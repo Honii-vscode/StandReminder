@@ -1,8 +1,15 @@
 node_modules/
+.npm-cache/
+.gradle-home/
+.tunnel-logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+android/.gradle/
+android/build/
+android/app/build/
 
 .env
 .env.*

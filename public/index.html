@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -106,7 +106,8 @@
       stroke: var(--accent);
     }
 
-    .progress-bar.break {
+    .progress-bar.break,
+    .progress-bar.breaking {
       stroke: var(--accent-break);
     }
 
@@ -284,6 +285,54 @@
       margin-top: 16px;
     }
 
+    .debug-panel {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 9999;
+      background: rgba(10, 10, 10, 0.92);
+      color: #e8f0ff;
+      border: 1px solid rgba(77, 171, 247, 0.45);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.4;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      max-height: 40vh;
+      overflow: auto;
+    }
+
+    .debug-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+
+    .debug-title {
+      font-weight: 700;
+      color: #9dd2ff;
+    }
+
+    .debug-btn {
+      border: 0;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-size: 12px;
+      background: #2d6ea8;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .debug-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #d8e6ff;
+    }
+
     @media (max-height: 500px) {
       .card {
         padding: 20px 16px;
@@ -355,8 +404,16 @@
     </div>
   </div>
 
+  <div id="debugPanel" class="debug-panel hidden">
+    <div class="debug-head">
+      <span class="debug-title">Debug Panel</span>
+      <button id="btnHideDebug" class="debug-btn">隐藏调试</button>
+    </div>
+    <div id="debugText" class="debug-text"></div>
+  </div>
+
   <script>
-    // 常量配置 - 调试模式
+    // 甯搁噺閰嶇疆 - 璋冭瘯妯″紡
     const CONFIG = {
       workMin: 2,
       workMax: 3,
@@ -364,7 +421,7 @@
       breakMax: 2
     };
 
-    // 状态
+    // 鐘舵€?
     let state = {
       isRunning: false,
       isPaused: false,
@@ -376,10 +433,19 @@
       intervalId: null,
       wakeLock: null,
 
-      // 统计
+      // 缁熻
       cyclesCompleted: 0,
       totalWorkingMinutes: 0,
       todayDate: new Date().toDateString()
+    };
+
+    const DEBUG_ENABLED = new URLSearchParams(window.location.search).get('debug') === '1'
+      || localStorage.getItem('standReminderDebug') === '1';
+    const debugState = {
+      lastElapsedSeconds: 0,
+      lastElapsedMs: 0,
+      lastElapsedSource: '-',
+      lastApplyAt: 0
     };
 
     // DOM
@@ -389,8 +455,26 @@
     progressBarEl.style.strokeDashoffset = '0';
 
     function setProgress(percent) {
-      const offset = circumference - percent / 100 * circumference;
+      const safePercent = Math.min(100, Math.max(0, Number(percent) || 0));
+      const offset = circumference - safePercent / 100 * circumference;
       progressBarEl.style.strokeDashoffset = offset;
+    }
+
+    function updateDebugPanel() {
+      if (!DEBUG_ENABLED) return;
+
+      const el = document.getElementById('debugText');
+      if (!el) return;
+
+      const lines = [
+        `mode=${state.mode} running=${state.isRunning} paused=${state.isPaused}`,
+        `remaining=${state.remaining}s currentDuration=${state.currentDuration}s`,
+        `lastTickTime=${state.lastTickTime ? new Date(state.lastTickTime).toLocaleTimeString() : '-'}`,
+        `lastElapsed=${debugState.lastElapsedSeconds}s (${debugState.lastElapsedMs}ms) from=${debugState.lastElapsedSource}`,
+        `lastApplyAt=${debugState.lastApplyAt ? new Date(debugState.lastApplyAt).toLocaleTimeString() : '-'}`,
+        `visibility=${document.visibilityState} wakeLock=${!!state.wakeLock}`
+      ];
+      el.textContent = lines.join('\n');
     }
 
     function formatTime(seconds) {
@@ -417,57 +501,95 @@
       }
     }
 
-    // 播放提醒音
+    // 鎾斁鎻愰啋闊?
     function playAlarm(type) {
-      // 使用AudioContext生成简单铃声
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!window.AudioContext && !window.webkitAudioContext) {
+        return;
+      }
 
-      if (type === 'work') {
-        // 工作结束 提醒站起来 - 三连音
-        const now = ctx.currentTime;
-        const o1 = ctx.createOscillator();
-        const o2 = ctx.createOscillator();
-        const o3 = ctx.createOscillator();
-        o1.connect(ctx.destination);
-        o2.connect(ctx.destination);
-        o3.connect(ctx.destination);
-        o1.frequency.value = 880;
-        o2.frequency.value = 880;
-        o3.frequency.value = 880;
-        o1.start(now);
-        o1.stop(now + 0.15);
-        o2.start(now + 0.3);
-        o2.stop(now + 0.15);
-        o3.start(now + 0.6);
-        o3.stop(now + 0.15);
-      } else {
-        // 活动结束 提醒坐下 - 双连音，音调稍低
-        const now = ctx.currentTime;
-        const o1 = ctx.createOscillator();
-        const o2 = ctx.createOscillator();
-        o1.connect(ctx.destination);
-        o2.connect(ctx.destination);
-        o1.frequency.value = 660;
-        o2.frequency.value = 660;
-        o1.start(now);
-        o1.stop(now + 0.2);
-        o2.start(now + 0.35);
-        o2.stop(now + 0.2);
+      try {
+        // 使用AudioContext生成简单铃声
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let closeAt = 0.8;
+
+        if (type === 'work') {
+          // 工作结束 提醒站起来 - 三连音
+          const now = ctx.currentTime;
+          const o1 = ctx.createOscillator();
+          const o2 = ctx.createOscillator();
+          const o3 = ctx.createOscillator();
+          o1.connect(ctx.destination);
+          o2.connect(ctx.destination);
+          o3.connect(ctx.destination);
+          o1.frequency.value = 880;
+          o2.frequency.value = 880;
+          o3.frequency.value = 880;
+          o1.start(now);
+          o1.stop(now + 0.22);
+          o2.start(now + 0.36);
+          o2.stop(now + 0.58);
+          o3.start(now + 0.72);
+          o3.stop(now + 0.94);
+          closeAt = 1.1;
+        } else {
+          // 活动结束 提醒坐下 - 双连音，音调稍低
+          const now = ctx.currentTime;
+          const o1 = ctx.createOscillator();
+          const o2 = ctx.createOscillator();
+          o1.connect(ctx.destination);
+          o2.connect(ctx.destination);
+          o1.frequency.value = 660;
+          o2.frequency.value = 660;
+          o1.start(now);
+          o1.stop(now + 0.28);
+          o2.start(now + 0.42);
+          o2.stop(now + 0.7);
+          closeAt = 0.9;
+        }
+
+        // Release audio resources after tones are finished.
+        setTimeout(() => {
+          ctx.close().catch(() => {});
+        }, Math.ceil(closeAt * 1000));
+      } catch (e) {
+        console.warn('playAlarm failed:', e);
       }
     }
 
-    function requestNotificationPermission() {
+    async function requestNotificationPermission() {
       if ('Notification' in window) {
-        Notification.requestPermission();
+        try {
+          await Notification.requestPermission();
+        } catch (e) {
+          console.warn('Notification permission request failed:', e);
+        }
       }
     }
 
-    function sendNotification(title, body) {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, {
-          body: body,
-          icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmVyc2lvbj0iMS4xIgB2aWV3Qm94PSIwIDAgNTEyIDUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjY0IiBmaWxsPSIjMWQxZDFkIi8+CiAgPHRleHQgeD0iMjU2IiB5PSIzMjAiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOTAiIGZpbGw9IndaWQiPopjIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5TdDwvdGV4dD4KPC9zdmc+'
-        });
+    async function sendNotification(title, body, vibratePattern = []) {
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        return;
+      }
+
+      const options = {
+        body,
+        icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmVyc2lvbj0iMS4xIgB2aWV3Qm94PSIwIDAgNTEyIDUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjY0IiBmaWxsPSIjMWQxZDFkIi8+CiAgPHRleHQgeD0iMjU2IiB5PSIzMjAiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOTAiIGZpbGw9IndaWQiPopjIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5TdDwvdGV4dD4KPC9zdmc+'
+      };
+      if (Array.isArray(vibratePattern) && vibratePattern.length > 0) {
+        options.vibrate = vibratePattern;
+      }
+
+      try {
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) {
+            await reg.showNotification(title, options);
+            return;
+          }
+        }
+        new Notification(title, options);
+      } catch (e) {
+        console.warn('Notification send failed:', e);
       }
     }
 
@@ -494,6 +616,7 @@
 
     function startWorking() {
       console.log('startWorking');
+      state.isPaused = false;
       state.mode = 'working';
       state.currentDuration = randomWorkDuration();
       state.remaining = state.currentDuration;
@@ -507,6 +630,7 @@
     }
 
     function startBreak() {
+      state.isPaused = false;
       state.mode = 'breaking';
       state.currentDuration = randomBreakDuration();
       state.remaining = state.currentDuration;
@@ -517,28 +641,52 @@
 
     function nextCycle() {
       if (state.mode === 'working') {
-        // 工作结束，提醒站立
-        vibrate([200, 100, 200, 100, 200]);
+        // 宸ヤ綔缁撴潫锛屾彁閱掔珯绔?
+        const workVibrate = [300, 140, 300, 140, 300];
+        vibrate(workVibrate);
         playAlarm('work');
-        sendNotification('该站起来了！', '活动活动，' + Math.round(state.currentDuration / 60) + '分钟后提醒你坐下');
+        void sendNotification('该站起来了！', '活动活动，' + Math.round(state.currentDuration / 60) + '分钟后提醒你坐下', workVibrate);
         state.totalWorkingMinutes += Math.round(state.currentDuration / 60);
         state.cyclesCompleted++;
         saveStats();
         startBreak();
       } else {
-        // 活动结束，回去工作
-        vibrate([200, 100, 200]);
+        // 娲诲姩缁撴潫锛屽洖鍘诲伐浣?
+        const breakVibrate = [260, 140, 260];
+        vibrate(breakVibrate);
         playAlarm('break');
-        sendNotification('可以坐下了', '开始新一周期工作');
+        void sendNotification('可以坐下了', '开始新一周期工作', breakVibrate);
         startWorking();
       }
+    }
+
+    function applyElapsedTime(now = Date.now(), source = 'tick') {
+      const elapsedMs = now - state.lastTickTime;
+      const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+      if (elapsedSeconds <= 0) {
+        debugState.lastElapsedSeconds = 0;
+        debugState.lastElapsedMs = elapsedMs;
+        debugState.lastElapsedSource = source;
+        debugState.lastApplyAt = now;
+        return false;
+      }
+
+      state.remaining -= elapsedSeconds;
+      // Keep sub-second remainder so long runs are more accurate.
+      state.lastTickTime += elapsedSeconds * 1000;
+      debugState.lastElapsedSeconds = elapsedSeconds;
+      debugState.lastElapsedMs = elapsedMs;
+      debugState.lastElapsedSource = source;
+      debugState.lastApplyAt = now;
+      return true;
     }
 
     function tick() {
       if (state.isPaused) return;
 
-      state.remaining--;
-      state.lastTickTime = Date.now();
+      const changed = applyElapsedTime(Date.now(), 'tick');
+      if (!changed) return;
 
       if (state.remaining <= 0) {
         nextCycle();
@@ -548,44 +696,35 @@
       updateUI();
     }
 
-    let lastVisibilityChangeTime = Date.now();
-
-    // 当从后台返回时校准时间
+    // 褰撲粠鍚庡彴杩斿洖鏃舵牎鍑嗘椂闂?
     function recalibrateTime() {
       if (!state.isRunning || state.isPaused || state.mode === 'idle') return;
 
-      const now = Date.now();
-      const elapsedSeconds = Math.round((now - lastVisibilityChangeTime) / 1000);
+      const changed = applyElapsedTime(Date.now(), 'recalibrate');
+      if (!changed) return;
 
-      if (elapsedSeconds > 1) {
-        // 页面在后台被暂停了，JS没执行，减去实际过去的全部时间
-        console.log(`[Recalibrate] Page in background ${elapsedSeconds}s, subtract ${elapsedSeconds}s`);
-        state.remaining -= elapsedSeconds;
-        state.lastTickTime = now;
-
-        if (state.remaining <= 0) {
-          console.log('[Recalibrate] Time is up!');
-          nextCycle();
-        } else {
-          updateUI();
-        }
+      if (state.remaining <= 0) {
+        console.log('[Recalibrate] Time is up!');
+        nextCycle();
+      } else {
+        updateUI();
       }
     }
 
-    // 记录每次可见性变化时间
+    // 璁板綍姣忔鍙鎬у彉鍖栨椂闂?
     function handleVisibilityChange() {
-      const now = Date.now();
+      debugState.lastElapsedSource = `visibility:${document.visibilityState}`;
+      debugState.lastApplyAt = Date.now();
       if (document.visibilityState === 'visible') {
-        // 回到前台，校准时间
+        // 鍥炲埌鍓嶅彴锛屾牎鍑嗘椂闂?
         if (state.isRunning && !state.isPaused) {
           requestWakeLock();
           recalibrateTime();
         }
       } else {
-        // 进入后台，记录时间
-        lastVisibilityChangeTime = now;
         releaseWakeLock();
       }
+      updateDebugPanel();
     }
 
     function startTick() {
@@ -597,7 +736,7 @@
     }
 
     function updateUI() {
-      // 更新UI
+      // 鏇存柊UI
       const modeText = {
         working: '工作中',
         breaking: '活动中'
@@ -614,19 +753,22 @@
       timeDisplay.textContent = formatTime(state.remaining);
       modeName.textContent = modeText[state.mode];
 
-      const percent = (state.remaining / state.currentDuration) * 100;
+      const percent = state.currentDuration > 0
+        ? (state.remaining / state.currentDuration) * 100
+        : 0;
       setProgress(percent);
 
-      // 更新进度条颜色
-      progressBarEl.classList.remove('working', 'break');
+      // 鏇存柊杩涘害鏉￠鑹?
+      progressBarEl.classList.remove('working', 'break', 'breaking');
       progressBarEl.classList.add(state.mode);
 
-      // 更新按钮文字
+      // 鏇存柊鎸夐挳鏂囧瓧
       const btnPR = document.getElementById('btnPauseResume');
       btnPR.textContent = state.isPaused ? '继续' : '暂停';
 
-      // 更新统计
+      // 鏇存柊缁熻
       updateStats();
+      updateDebugPanel();
     }
 
     function updateStats() {
@@ -639,6 +781,7 @@
       if (state.isPaused) {
         releaseWakeLock();
       } else {
+        state.lastTickTime = Date.now();
         requestWakeLock();
       }
       updateUI();
@@ -646,21 +789,26 @@
 
     function stopAll() {
       state.isRunning = false;
+      state.isPaused = false;
       state.mode = 'idle';
+      state.currentDuration = 0;
+      state.remaining = 0;
       if (state.intervalId) {
         clearInterval(state.intervalId);
         state.intervalId = null;
       }
       releaseWakeLock();
+      setProgress(100);
       document.getElementById('initialState').classList.remove('hidden');
       document.getElementById('timerState').classList.add('hidden');
+      updateDebugPanel();
     }
 
     function saveStats() {
-      // 检查是否是新的一天
+      // 妫€鏌ユ槸鍚︽槸鏂扮殑涓€澶?
       const today = new Date().toDateString();
       if (today !== state.todayDate) {
-        // 重置统计
+        // 閲嶇疆缁熻
         state.cyclesCompleted = 0;
         state.totalWorkingMinutes = 0;
         state.todayDate = today;
@@ -689,28 +837,40 @@
       }
     }
 
-    // 事件绑定
-    document.getElementById('btnStart').addEventListener('click', () => {
+    // 浜嬩欢缁戝畾
+    document.getElementById('btnStart').addEventListener('click', async () => {
       console.log('btnStart clicked');
-      requestNotificationPermission();
+      await requestNotificationPermission();
       startWorking();
     });
 
     document.getElementById('btnPauseResume').addEventListener('click', togglePause);
     document.getElementById('btnStop').addEventListener('click', stopAll);
 
-    // 页面可见性变化处理（防止系统暂停JS）
-    lastVisibilityChangeTime = Date.now();
+    if (DEBUG_ENABLED) {
+      localStorage.setItem('standReminderDebug', '1');
+      const panel = document.getElementById('debugPanel');
+      panel.classList.remove('hidden');
+      document.getElementById('btnHideDebug').addEventListener('click', () => {
+        localStorage.removeItem('standReminderDebug');
+        panel.classList.add('hidden');
+      });
+      updateDebugPanel();
+    }
+
+    // 椤甸潰鍙鎬у彉鍖栧鐞嗭紙闃叉绯荤粺鏆傚仠JS锛?
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // 注册Service Worker
+    // 娉ㄥ唽Service Worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/sw.js');
+        navigator.serviceWorker.register('/sw.js').catch((e) => {
+          console.warn('Service worker registration failed:', e);
+        });
       });
     }
 
-    // 初始加载
+    // 鍒濆鍔犺浇
     loadStats();
     updateStats();
     setProgress(100);

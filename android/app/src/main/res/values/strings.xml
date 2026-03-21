@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Stand Reminder</string>
+    <string name="title_activity_main">Stand Reminder</string>
+    <string name="package_name">com.honii.standreminder</string>
+    <string name="custom_url_scheme">com.honii.standreminder</string>
+</resources>
