@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"d:/VS Code Project/StandReminder-gitclone\" log --oneline)"
+    ]
+  }
+}

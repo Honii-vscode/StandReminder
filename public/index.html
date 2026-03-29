@@ -413,15 +413,15 @@
   </div>
 
   <script>
-    // 甯搁噺閰嶇疆 - 璋冭瘯妯″紡
+    // 参数配置 - 调试模式
     const CONFIG = {
-      workMin: 2,
-      workMax: 3,
+      workMin: 1,
+      workMax: 1,
       breakMin: 1,
-      breakMax: 2
+      breakMax: 1
     };
 
-    // 鐘舵€?
+    // 状态
     let state = {
       isRunning: false,
       isPaused: false,
@@ -433,7 +433,7 @@
       intervalId: null,
       wakeLock: null,
 
-      // 缁熻
+      // 统计
       cyclesCompleted: 0,
       totalWorkingMinutes: 0,
       todayDate: new Date().toDateString()
@@ -641,7 +641,7 @@
 
     function nextCycle() {
       if (state.mode === 'working') {
-        // 宸ヤ綔缁撴潫锛屾彁閱掔珯绔?
+        // 工作结束，提醒站起来
         const workVibrate = [300, 140, 300, 140, 300];
         vibrate(workVibrate);
         playAlarm('work');
@@ -651,7 +651,7 @@
         saveStats();
         startBreak();
       } else {
-        // 娲诲姩缁撴潫锛屽洖鍘诲伐浣?
+        // 活动结束，回去工作
         const breakVibrate = [260, 140, 260];
         vibrate(breakVibrate);
         playAlarm('break');
@@ -696,7 +696,7 @@
       updateUI();
     }
 
-    // 褰撲粠鍚庡彴杩斿洖鏃舵牎鍑嗘椂闂?
+    // 当从后台返回时校准时间
     function recalibrateTime() {
       if (!state.isRunning || state.isPaused || state.mode === 'idle') return;
 
@@ -711,12 +711,12 @@
       }
     }
 
-    // 璁板綍姣忔鍙鎬у彉鍖栨椂闂?
+    // 记录每次可见性变化时间
     function handleVisibilityChange() {
       debugState.lastElapsedSource = `visibility:${document.visibilityState}`;
       debugState.lastApplyAt = Date.now();
       if (document.visibilityState === 'visible') {
-        // 鍥炲埌鍓嶅彴锛屾牎鍑嗘椂闂?
+        // 回到前台，校准时间
         if (state.isRunning && !state.isPaused) {
           requestWakeLock();
           recalibrateTime();
@@ -736,7 +736,7 @@
     }
 
     function updateUI() {
-      // 鏇存柊UI
+      // 更新UI
       const modeText = {
         working: '工作中',
         breaking: '活动中'
@@ -758,15 +758,15 @@
         : 0;
       setProgress(percent);
 
-      // 鏇存柊杩涘害鏉￠鑹?
+      // 更新进度环颜色
       progressBarEl.classList.remove('working', 'break', 'breaking');
       progressBarEl.classList.add(state.mode);
 
-      // 鏇存柊鎸夐挳鏂囧瓧
+      // 更新按钮文字
       const btnPR = document.getElementById('btnPauseResume');
       btnPR.textContent = state.isPaused ? '继续' : '暂停';
 
-      // 鏇存柊缁熻
+      // 更新统计
       updateStats();
       updateDebugPanel();
     }
@@ -805,10 +805,10 @@
     }
 
     function saveStats() {
-      // 妫€鏌ユ槸鍚︽槸鏂扮殑涓€澶?
+      // 检查是否是新的一天
       const today = new Date().toDateString();
       if (today !== state.todayDate) {
-        // 閲嶇疆缁熻
+        // 重置统计
         state.cyclesCompleted = 0;
         state.totalWorkingMinutes = 0;
         state.todayDate = today;
@@ -837,10 +837,13 @@
       }
     }
 
-    // 浜嬩欢缁戝畾
+    // 事件绑定
     document.getElementById('btnStart').addEventListener('click', async () => {
       console.log('btnStart clicked');
+      // 网页端请求通知权限
       await requestNotificationPermission();
+      // 原生 Android 请求通知权限
+      await requestNativePermissions();
       startWorking();
     });
 
@@ -858,10 +861,10 @@
       updateDebugPanel();
     }
 
-    // 椤甸潰鍙鎬у彉鍖栧鐞嗭紙闃叉绯荤粺鏆傚仠JS锛?
+    // 页面可见性变化处理（防止系统暂停JS）
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // 娉ㄥ唽Service Worker
+    // 注册Service Worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
         navigator.serviceWorker.register('/sw.js').catch((e) => {
@@ -870,10 +873,33 @@
       });
     }
 
-    // 鍒濆鍔犺浇
+    // 原生权限请求 - 请求Android通知权限
+    async function requestNativePermissions() {
+      // 如果在Capacitor Android环境中，请求运行时权限
+      if (typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform()) {
+        try {
+          // Capacitor 原生环境中，LocalNotifications 插件已经可用
+          const { LocalNotifications } = Capacitor.Plugins;
+          if (!LocalNotifications) {
+            console.warn('LocalNotifications plugin not found');
+            return;
+          }
+          // Android 13+ 需要请求通知权限
+          // 使用 LocalNotifications 插件正确请求权限
+          const result = await LocalNotifications.requestPermissions();
+          console.log('Native notification permission requested:', result);
+        } catch (e) {
+          console.warn('Failed to request native notification permission:', e);
+        }
+      }
+    }
+
+    // 初始加载
     loadStats();
     updateStats();
     setProgress(100);
+    // APP鍚姩鏃惰姹傝嚜鍔ㄥ悗鍙版秷鎭潈闄�
+    requestNativePermissions();
 
     console.log('Stand Reminder initialized');
   </script>
